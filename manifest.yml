@@ -1,0 +1,37 @@
+modules:
+  macro:
+    - key: sprint-metrics-hello-world
+      function: main
+      title: sprint-metrics
+      description: metrics of the current sprint!
+      config:
+        function: config-function-key
+  function:
+    - key: main
+      handler: index.run
+    - key: config-function-key
+      handler: index.config
+app:
+  id: ari:cloud:ecosystem::app/f2a6e73d-912a-4044-9177-1ab6308c5ce6
+
+permissions:
+  scopes:
+    - storage:app
+    - read:jira-work
+    - read:issue.changelog:jira
+    - read:issue.transition:jira
+    - read:status:jira
+    - read:issue-type:jira
+    - read:project:jira
+    - read:project.property:jira
+    - read:user:jira
+    - read:application-role:jira
+    - read:group:jira
+    - read:issue-type-hierarchy:jira
+    - read:audit-log:jira
+    - read:field-configuration:jira
+    - read:issue-meta:jira
+    - read:sprint:jira-software
+    - read:issue-details:jira
+    - read:jql:jira
+    - read:board-scope:jira-software
