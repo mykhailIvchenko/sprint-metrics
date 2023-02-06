@@ -1,12 +1,15 @@
 import ForgeUI, {
-    Fragment,
+    Badge,
+    Cell, Em,
+    Fragment, Head, Heading, Link,
     Macro,
     MacroConfig,
-    render,
+    render, Row, StatusLozenge, Table,
     Text,
     TextField,
     useConfig,
     useState,
+    Image
 
 } from "@forge/ui";
 
@@ -18,6 +21,13 @@ import {getComments} from "./storage";
 
 import {SprintMetricsTable} from "./sprintMetricsTable";
 import {AddMultipleCommentModalDialog} from "./sprintMetricMultipleParamDialog";
+import {
+    extractIssuesAddedAfterSprintStart,
+    extractNewIssues,
+    getAppearance,
+    getIssuesForSprint, getServerInfo,
+    IssuesMacro
+} from "./issues-macro";
 
 
 const defaultConfig = {
@@ -43,14 +53,12 @@ function getIssues(sprint, previousSprints) {
 
 function getPreviousSprintsBySprintId(target) {
     const allSprints = useState(getAllSprints(target.originBoardId));
-
     if (!allSprints) return [];
 
     return allSprints
         .filter(x => x)
         .flatMap(allSprintsResponse => allSprintsResponse.values)
         .filter(x => x)
-        .filter(sprint => sprint.startDate)
         .filter(sprint => extractDateFromTimeStamp(sprint.startDate) <= extractDateFromTimeStamp(target.startDate))
         .sort((sprint1, sprint2) => sprint1.startDate - sprint2.startDate)
         .reverse()
@@ -107,8 +115,6 @@ function extractSprintIdToVelocityMap(previousSprints) {
                 sprint.goal)
         )
     );
-
-
     return sprintIdToSprintDetailsMap;
 }
 
@@ -206,7 +212,7 @@ function extractCarryovers(issues, sprint) {
 
             const lastStatusChange = statusesTransitions[0];
 
-            if (!lastStatusChange || !(lastStatusChange.field === "resolution")) {
+            if (!lastStatusChange || (lastStatusChange.field !== "resolution")) {
                 carryovers.push(issue);
             }
         }
@@ -226,7 +232,6 @@ function calculateAVGVelocityForPreviousSprints(sprintIdToVelocityMap, targetSpr
     let AVG = completed / sprintIdToVelocityMap.size;
 
     return Math.round(AVG);
-
 }
 
 function validateIssues(issues, sprint) {
@@ -247,14 +252,35 @@ function validateIssues(issues, sprint) {
     return valid;
 }
 
+function extractCarryovers2(issues, sprint) {
+    const allSprints = useState(getAllSprints(sprint.originBoardId));
+
+    const previousSprints = allSprints
+        .filter(x => x)
+        .flatMap(allSprintsResponse => allSprintsResponse.values)
+        .filter(x => x)
+        .filter(target => target.startDate)
+        .filter(target => extractDateFromTimeStamp(target.startDate) < extractDateFromTimeStamp(sprint.startDate))
+        .sort((sprint1, sprint2) => sprint1.startDate > sprint2.startDate);
+
+    const previousSprint = previousSprints[previousSprints.length - 1];
+
+    if (!previousSprint) return []; //The first sprint
+
+    let [issuesForPreviousSprint] = useState(getIssuesForSprint(previousSprint.id));
+
+    let issuesForPreviousSprintKeys = validateIssues(issuesForPreviousSprint, previousSprint).map(issue => issue.key);
+
+    return issues.filter(issue => issuesForPreviousSprintKeys.includes(issue.key));
+}
+
 const App = () => {
-    storage.delete("acronym-29");
+
     const config = useConfig() || defaultConfig;
 
     const sprintId = config.sprintId;
 
     if (!sprintId) {
-        console.log("Oh shit here we gone again")
         return <Text>enter the spring id to render report</Text>;
     }
     const [sprintInfo] = useState(getSprintInfo(sprintId));
@@ -269,22 +295,96 @@ const App = () => {
 
     const [allIssues] = useState(sprintsIssues);
 
-    const sprintIdToVelocityMap = extractSprintIdToVelocityMap(previousSprints);
+    const sprintIdToVelocityMap = extractSprintIdToVelocityMap(previousSprints.reverse());
 
     fillCommitments(allIssues, sprintIdToVelocityMap);
 
     fillCompleted(allIssues, sprintIdToVelocityMap);
 
+    console.log(Object.fromEntries([...sprintIdToVelocityMap]));
+
     const detailsForTargetSprint = sprintIdToVelocityMap.get(Number(sprintId));
 
     let carryovers = extractCarryovers(allIssues, sprintInfo).length;
 
-    let velocityAVG = calculateAVGVelocityForPreviousSprints(sprintIdToVelocityMap, Number(sprintId));
+    let velocityAVG = calculateAVGVelocityForPreviousSprints( new Map(sprintIdToVelocityMap), Number(sprintId));
 
     const [metric, updateMetric] = useState(getComments(sprintId));
 
     const [isOpenModal, setOpenModal] = useState(false);
     const [isOpenMultipleModal, setOpenMultipleModal] = useState(false);
+    // /---------------------- sprint-report-issues-macro
+    const [serverInfo] = useState(getServerInfo());
+
+    const url = serverInfo.baseUrl.concat("/").concat("browse");
+
+    const [issues] = useState(getIssuesForSprint(sprintId));
+
+    if (!sprintInfo || !issues ) {
+        return <Text>No issues for target sprint</Text>;
+    }
+
+    const validatedIssues = validateIssues(issues, sprintInfo);
+
+    const carryoversMetrics = extractCarryovers2(validatedIssues, sprintInfo);
+
+    const newIssues = extractNewIssues(validatedIssues, sprintInfo);
+
+    const issuesAddedAfterSprintStart = extractIssuesAddedAfterSprintStart(validatedIssues, sprintInfo);
+
+    //--------------------------------------------
+    //---------------------velocity-chart--------------------
+    const details = Array.from(sprintIdToVelocityMap, ([key, value]) => ({key, value}));
+
+    const limitedDetails = details.sort((a, b) => a.value.completeDate - b.value.completeDate);
+
+
+    const names = JSON.stringify(limitedDetails.map((detail, i) => {
+/*        if(i === 0) { // add names only for honest index
+            return  " " ;
+        } else {
+            return detail.value.name;
+        }*/
+        return detail.value.name;
+    }));
+
+    console.log("names: "  + names);
+
+    const commitments = JSON.stringify(limitedDetails.map(detail => detail.value.commitments));
+    const completed = JSON.stringify(limitedDetails.map(detail => detail.value.completed));
+    const predictable = JSON.stringify(limitedDetails.map((detail => (detail.value.completed / detail.value.commitments) * 100)));
+
+    const velocityChartURL = "https://quickchart.io/chart?bkg=white&c={type:%27bar%27,data:{labels:"
+        .concat(names)
+        .concat(",")
+        .concat("datasets:[{")
+        .concat("borderColor: %27rgba(255, 138, 0, 1)%27,")
+        .concat("backgroundColor: %27rgba(255, 138, 0, 1)%27,")
+        .concat("label:%27commitments%27,data:")
+        .concat(commitments)
+        .concat("},")
+        .concat("{")
+        .concat("borderColor: %27rgba(0, 130, 202, 1)%27,")
+        .concat("backgroundColor: %27rgba(0, 130, 202, 1)%27,")
+        .concat("label:%27completed%27,data:")
+        .concat(completed)
+        .concat("}]},")
+        .concat("options:{scales:{xAxes:[{ticks:{beginAtZero:false,fontSize:10}},],},}}");
+
+
+    const areaChartURL = "https://quickchart.io/chart?bkg=white&c={type:%27line%27,data:{labels:"
+        .concat(names)
+        .concat(",")
+        .concat("datasets:[{")
+        .concat("backgroundColor: %27rgba(0, 130, 202, 1)%27,")
+        .concat("borderColor: %27rgba(0, 130, 202, 1)%27,")
+        .concat("fill: false,")
+        .concat("label:%27Predictability %25 vs iterations%27,data:")
+        .concat(predictable)
+        .concat("}]},")
+        .concat("options:{scales:{xAxes:[{ticks:{beginAtZero:false,fontSize:10}},],},}}");
+//----------------------------------velocity-chart
+
 
     const [defaultValue, setDefaultValue] = useState(undefined);
     const [key, setKey] = useState(undefined);
@@ -293,6 +393,120 @@ const App = () => {
 
     return (
         <Fragment>
+            <Heading size="large">{sprintInfo.name}</Heading>
+            <Heading size="medium">Items from previous sprint</Heading>
+            <Table>
+                <Head>
+                    <Cell>
+                        <Text>Key 1</Text>
+                    </Cell>
+                    <Cell>
+                        <Text>Summary</Text>
+                    </Cell>
+                    <Cell>
+                        <Text>Status</Text>
+                    </Cell>
+                    <Cell>
+                        <Text>Story Points</Text>
+                    </Cell>
+                </Head>
+                {carryoversMetrics.map(issue => (
+                    <Row>
+                        <Cell>
+                            <Text>
+                                <Link appearance="button" href={url + "/" + issue.key} openNewTab="true">
+                                    {issue.key}
+                                </Link>
+                            </Text>
+                        </Cell>
+                        <Cell>
+                            <Text><Em>{issue.fields.summary}</Em></Text>
+                        </Cell>
+                        <Cell>
+                            <Text><StatusLozenge text={issue.fields.status.name}
+                                                 appearance={getAppearance(issue.fields.status.name)}/></Text>
+                        </Cell>
+                        <Cell>
+                            <Text><Badge appearance="primary" text={issue.fields.customfield_10016}/></Text>
+                        </Cell>
+                    </Row>
+                ))}
+            </Table>
+            <Heading size="medium">New Items</Heading>
+            <Table>
+                {newIssues.map(issue => (
+                    <Row>
+                        <Cell>
+                            <Text>
+                                <Link appearance="button" href={url + "/" + issue.key} openNewTab="true">
+                                    {issue.key}
+                                </Link>
+                            </Text>
+                        </Cell>
+                        <Cell>
+                            <Text><Em>{issue.fields.summary}</Em></Text>
+                        </Cell>
+                        <Cell>
+                            <Text><StatusLozenge text={issue.fields.status.name}
+                                                 appearance={getAppearance(issue.fields.status.name)}/></Text>
+                        </Cell>
+                        <Cell>
+                            <Text><Badge appearance="primary" text={issue.fields.customfield_10016}/></Text>
+                        </Cell>
+                    </Row>
+                ))}
+            </Table>
+            <Heading size="medium">Items added after sprint started</Heading>
+            <Table>
+                {issuesAddedAfterSprintStart.map(issue => (
+                    <Row>
+                        <Cell>
+                            <Text>
+                                <Link appearance="button" href={url + "/" + issue.key} openNewTab="true">
+                                    {issue.key}
+                                </Link>
+                            </Text>
+                        </Cell>
+                        <Cell>
+                            <Text><Em>{issue.fields.summary}</Em></Text>
+                        </Cell>
+
+                        <Cell>
+                            <Text><StatusLozenge text={issue.fields.status.name}
+                                                 appearance={getAppearance(issue.fields.status.name)}/></Text>
+                        </Cell>
+                        <Cell>
+                            <Text><Badge appearance="primary" text={issue.fields.customfield_10016}/></Text>
+                        </Cell>
+                    </Row>
+                ))}
+            </Table>
+
+
+            <Table>
+                <Row>
+                    <Cell><Text>Total</Text></Cell>
+                    <Cell>
+                        <Text>Items count: {validatedIssues.length}</Text>
+                    </Cell>
+                    <Cell><Text>Story points sum:
+                        {validatedIssues
+                            .map(issue => issue.fields.customfield_10016)
+                            .filter(i=>i)
+                            .reduce(function (a, b) {
+                                return a + b;
+                            })
+                        }
+                    </Text>
+                    </Cell>
+                </Row>
+            </Table>
+
+
+
+
+
+
             {!!isOpenModal && (
                 <AddCommentModalDialog
                     onOpen={() => {
@@ -312,8 +526,7 @@ const App = () => {
             )}
             {!!isOpenMultipleModal && (
                 <AddMultipleCommentModalDialog
-                    onOpen={() => {
-                    }}
+                    onOpen={() => {}}
                     onClose={() => {
                         setOpenMultipleModal(false)
                         setComment(undefined);
@@ -347,7 +560,54 @@ const App = () => {
                     commentRowExist={commentRowExist}
                 />
             }
-        </Fragment>);
+
+
+            <Heading size="large">Velocity chart</Heading>
+            <Image
+                src={velocityChartURL}
+                alt="progress"
+            />
+            <Heading size="large">Predictability chart</Heading>
+            <Image
+                src={areaChartURL}
+                alt="progress"
+            />
+
+            <Table>
+                <Head>
+                    <Cell>
+                        <Text>Sprint name</Text>
+                    </Cell>
+                    <Cell>
+                        <Text>Sprint id</Text>
+                    </Cell>
+                    <Cell>
+                        <Text>commitments</Text>
+                    </Cell>
+                    <Cell>
+                        <Text>completed</Text>
+                    </Cell>
+                </Head>
+                {
+                    limitedDetails.map(velocity => (
+                        <Row>
+                            <Cell>
+                                <Text>{velocity.value.name}</Text>
+                            </Cell>
+                            <Cell>
+                                <Text>{velocity.key}</Text>
+                            </Cell>
+                            <Cell>
+                                <Text>{velocity.value.commitments}</Text>
+                            </Cell>
+                            <Cell>
+                                <Text>{velocity.value.completed}</Text>
+                            </Cell>
+                        </Row>
+                    ))}
+            </Table>
+        </Fragment>
+    );
 };
 
 
@@ -360,7 +620,7 @@ export const run = render(
 const Config = () => {
     return (
         <MacroConfig>
-            <TextField name="sprintId" label="sprint id" defaultValue={defaultConfig.sprintId}/>
+            <TextField name="sprintId" label="sprint id2" defaultValue={defaultConfig.sprintId}/>
         </MacroConfig>
     );
 };

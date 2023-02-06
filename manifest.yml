@@ -17,21 +17,19 @@ app:
 permissions:
   scopes:
     - storage:app
-    - read:jira-work
-    - read:issue.changelog:jira
-    - read:issue.transition:jira
-    - read:status:jira
-    - read:issue-type:jira
+    - read:issue:jira
+    - read:sprint:jira-software
     - read:project:jira
-    - read:project.property:jira
-    - read:user:jira
-    - read:application-role:jira
+    - read:jql:jira
+    - read:issue-details:jira
+    - read:board-scope.admin:jira-software
+    - read:content-details:confluence
+    - read:field:jira
+    - read:field.option:jira
     - read:group:jira
-    - read:issue-type-hierarchy:jira
+    - read:field.default-value:jira
+    - read:avatar:jira
+    - read:issue-meta:jira
     - read:audit-log:jira
     - read:field-configuration:jira
-    - read:issue-meta:jira
-    - read:sprint:jira-software
-    - read:issue-details:jira
-    - read:jql:jira
     - read:board-scope:jira-software

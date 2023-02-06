@@ -1,8 +1,9 @@
-# Forge Hello World
+# Forge 
 
-This project contains a Forge app written in Javascript that displays `Hello World!` in a Confluence macro. 
+Sprint report issues macros will show data from your Jira project on the Confluence page. It will show a Sprint Report where all your Sprint backlog items are divided into different sections, and you will easily see completed Items, uncompleted and Items added after the Sprint has started. 
 
-See [developer.atlassian.com/platform/forge/](https://developer.atlassian.com/platform/forge) for documentation and tutorials explaining Forge.
+With the help of this report you can continually analyze the effectiveness of your planning, and it will help you to improve predictability and align Completed and Planned velocity.
+
 
 ## Requirements
 
